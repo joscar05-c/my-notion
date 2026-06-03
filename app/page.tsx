@@ -17,6 +17,11 @@ export default function Home() {
   const [activeNote, setActiveNote] = useState<Note | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  const handleNoteSaved = (nota: Note) => {
+    setActiveNote(nota);
+    setRefreshTrigger((prev) => prev + 1);
+  };
+
   const handleNoteDeleted = () => {
     setActiveNote(null);
     setRefreshTrigger((prev) => prev + 1);
@@ -62,7 +67,7 @@ export default function Home() {
         <div className="px-8 pb-8">
           <EditorDinamico
             activeNote={activeNote}
-            onNoteSaved={() => setRefreshTrigger((prev) => prev + 1)}
+            onNoteSaved={handleNoteSaved}
             onNoteDeleted={handleNoteDeleted}
           />
         </div>
