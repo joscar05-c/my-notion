@@ -11,7 +11,7 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ onSelectNote, activeNoteId, refreshTrigger }: SidebarProps) => {
-  const [notas, setNotas] = useState<Pick<Note, "id" | "titulo" | "icono" | "portada" | "etiquetas">[]>([]);
+  const [notas, setNotas] = useState<Pick<Note, "id" | "titulo" | "icono" | "portada" | "etiquetas" | "actualizado_en">[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [terminoBusqueda, setTerminoBusqueda] = useState("");
@@ -22,7 +22,7 @@ const Sidebar = ({ onSelectNote, activeNoteId, refreshTrigger }: SidebarProps) =
         setCargando(true);
         const { data, error } = await supabase
           .from("notas")
-          .select("id, titulo, icono, portada, etiquetas")
+          .select("id, titulo, icono, portada, etiquetas, actualizado_en")
           .order("actualizado_en", { ascending: false });
 
         if (error) throw error;

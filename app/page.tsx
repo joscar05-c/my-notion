@@ -17,8 +17,8 @@ export default function Home() {
   const [activeNote, setActiveNote] = useState<Note | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const handleNoteSaved = (nota: Note) => {
-    setActiveNote(nota);
+  const handleNoteSaved = (notaActualizada: Note) => {
+    setActiveNote(notaActualizada);
     setRefreshTrigger((prev) => prev + 1);
   };
 

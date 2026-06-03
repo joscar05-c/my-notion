@@ -22,7 +22,6 @@ interface EditorProps {
 
 const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
   const editorRef = useRef<EditorJS | null>(null);
-  const isFirstMount = useRef(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [eliminando, setEliminando] = useState(false);
@@ -34,7 +33,8 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
   const [etiquetas, setEtiquetas] = useState<string[]>([]);
   const [etiquetasDisponibles, setEtiquetasDisponibles] = useState<string[]>([]);
   const [textoEtiqueta, setTextoEtiqueta] = useState("");
-  const [cargandoNota, setCargandoNota] = useState(false);
+  const [cambiosSinGuardar, setCambiosSinGuardar] = useState(false);
+  const [fechaEdicion, setFechaEdicion] = useState<string | null>(null);
 
   useEffect(() => {
     if (!editorRef.current) {
@@ -49,15 +49,11 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
           checklist: Checklist,
           table: Table,
         },
+        placeholder: "Empieza a escribir...",
+        onChange: () => setCambiosSinGuardar(true),
       });
       editorRef.current = editor;
     }
-    return () => {
-      if (editorRef.current && editorRef.current.destroy) {
-        editorRef.current.destroy();
-        editorRef.current = null;
-      }
-    };
   }, []);
 
   const cargarEtiquetasGlobales = async () => {
@@ -75,62 +71,40 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
   }, []);
 
   useEffect(() => {
-    if (!editorRef.current || !editorRef.current.isReady) return;
+    if (!editorRef.current || !activeNote) return;
 
-    editorRef.current.isReady.then(() => {
-      if (!activeNote) {
-        if (isFirstMount.current) {
-          isFirstMount.current = false;
-          return;
+    const cargarContenidoCompleto = async () => {
+      await editorRef.current!.isReady;
+
+      let contenidoFinal = activeNote.contenido;
+
+      if (!contenidoFinal) {
+        const { data, error } = await supabase
+          .from("notas")
+          .select("contenido")
+          .eq("id", activeNote.id)
+          .single();
+
+        if (!error && data) {
+          contenidoFinal = data.contenido;
         }
-
-        try {
-          if (editorRef.current && editorRef.current.blocks.getBlocksCount() > 0) {
-            editorRef.current.blocks.clear();
-          }
-        } catch (e) {
-          // Silenciamos cualquier error interno de la librería al limpiar
-        }
-        setTitulo("");
-        setIcono("");
-        setPortada("");
-        setEtiquetas([]);
-
-      } else {
-        isFirstMount.current = false;
-
-        const cargarNota = async () => {
-          try {
-            setCargandoNota(true);
-            const { data, error } = await supabase
-              .from("notas")
-              .select("contenido")
-              .eq("id", activeNote.id)
-              .single();
-
-            if (error) throw error;
-
-            setTitulo(activeNote.titulo);
-            setIcono(activeNote.icono || "");
-            setPortada(activeNote.portada || "");
-            setEtiquetas(activeNote.etiquetas || []);
-            if (data?.contenido && editorRef.current) {
-              await editorRef.current.render(data.contenido);
-            }
-          } catch (err) {
-            if (err instanceof Error) {
-              console.error("Error al cargar la nota:", err.message);
-            } else if (typeof err === "object" && err !== null && "message" in err) {
-              console.error("Error de Supabase:", (err as { message: string }).message);
-            }
-          } finally {
-            setCargandoNota(false);
-          }
-        };
-
-        cargarNota();
       }
-    }).catch(console.error);
+
+      if (contenidoFinal) {
+        await editorRef.current!.blocks.render(contenidoFinal);
+      } else {
+        await editorRef.current!.blocks.clear();
+      }
+
+      setTitulo(activeNote.titulo || "");
+      setEtiquetas(activeNote.etiquetas || []);
+      setIcono(activeNote.icono || "");
+      setPortada(activeNote.portada || "");
+      setCambiosSinGuardar(false);
+      setFechaEdicion(activeNote?.actualizado_en || null);
+    };
+
+    cargarContenidoCompleto();
   }, [activeNote]);
 
   const handleSave = async () => {
@@ -149,6 +123,7 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
           .select()
           .single();
         if (error) throw error;
+        setCambiosSinGuardar(false);
         onNoteSaved(data);
       } else {
         const { data, error } = await supabase
@@ -157,6 +132,7 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
           .select()
           .single();
         if (error) throw error;
+        setCambiosSinGuardar(false);
         onNoteSaved(data);
       }
     } catch (error) {
@@ -203,6 +179,7 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
       const nuevaEtiqueta = textoEtiqueta.trim();
       if (nuevaEtiqueta && !etiquetas.includes(nuevaEtiqueta)) {
         setEtiquetas([...etiquetas, nuevaEtiqueta]);
+        setCambiosSinGuardar(true);
       }
       setTextoEtiqueta("");
       cargarEtiquetasGlobales();
@@ -219,6 +196,7 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
 
   const removerEtiqueta = (tagToRemove: string) => {
     setEtiquetas(etiquetas.filter((tag) => tag !== tagToRemove));
+    setCambiosSinGuardar(true);
   };
 
   const handleSubirPortada = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,6 +224,7 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
         .getPublicUrl(filePath);
 
       setPortada(publicUrl);
+      setCambiosSinGuardar(true);
     } finally {
       setSubiendoPortada(false);
       if (fileInputRef.current) {
@@ -254,8 +233,20 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
     }
   };
 
+  const formatearFecha = (fechaISO: string) =>
+    new Date(fechaISO).toLocaleString("es-ES", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+
   return (
     <div className="max-w-3xl mx-auto mt-10 p-6 bg-white dark:bg-neutral-900 rounded-xl shadow-sm border border-gray-200 dark:border-neutral-800">
+      {fechaEdicion && (
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+          Última edición: {formatearFecha(fechaEdicion)}
+        </p>
+      )}
+
       {portada && (
         <div className="relative mb-4">
           <img
@@ -320,6 +311,7 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
               onEmojiClick={(emojiData) => {
                 setIcono(emojiData.emoji);
                 setMostrarEmojis(false);
+                setCambiosSinGuardar(true);
               }}
             />
           </div>
@@ -329,7 +321,10 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
       <input
         type="text"
         value={titulo}
-        onChange={(e) => setTitulo(e.target.value)}
+        onChange={(e) => {
+          setTitulo(e.target.value);
+          setCambiosSinGuardar(true);
+        }}
         className="w-full text-3xl font-bold mb-6 bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-300"
         placeholder="Título de la nota"
       />
@@ -367,6 +362,7 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
                     onClick={() => {
                       setEtiquetas([...etiquetas, tag]);
                       setTextoEtiqueta("");
+                      setCambiosSinGuardar(true);
                     }}
                     className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 cursor-pointer"
                   >
@@ -379,12 +375,6 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
         </div>
       </div>
 
-      {cargandoNota && (
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Cargando nota...
-        </p>
-      )}
-
       <div
         id="editorjs"
         className="min-h-75 text-gray-800 dark:text-gray-200 prose dark:prose-invert max-w-none"
@@ -393,10 +383,16 @@ const Editor = ({ activeNote, onNoteSaved, onNoteDeleted }: EditorProps) => {
       <div className="mt-6 flex gap-3">
         <button
           onClick={handleSave}
-          disabled={guardando || eliminando}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors"
+          disabled={guardando || eliminando || (!cambiosSinGuardar && !!activeNote)}
+          className={`px-4 py-2 font-medium rounded-lg transition-colors ${
+            guardando
+              ? "bg-blue-300 dark:bg-blue-800 text-white cursor-wait"
+              : !cambiosSinGuardar && activeNote
+                ? "bg-gray-200 dark:bg-neutral-800 text-gray-500 dark:text-gray-400 cursor-default"
+                : "bg-blue-600 hover:bg-blue-700 text-white"
+          }`}
         >
-          {guardando ? "Guardando..." : activeNote ? "Actualizar Nota" : "Guardar Nota"}
+          {guardando ? "Guardando..." : !cambiosSinGuardar && activeNote ? "Guardado" : "Guardar cambios"}
         </button>
 
         {activeNote && (
