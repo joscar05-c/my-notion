@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
 import dynamic from "next/dynamic";
 import Auth from "./components/Auth";
+import Sidebar from "./components/Sidebar";
 import { Session } from "@supabase/supabase-js";
+import { Note } from "./types/types";
 
 const EditorDinamico = dynamic(() => import("../app/components/Editor"), {
   ssr: false,
@@ -12,6 +14,13 @@ const EditorDinamico = dynamic(() => import("../app/components/Editor"), {
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [activeNote, setActiveNote] = useState<Note | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const handleNoteDeleted = () => {
+    setActiveNote(null);
+    setRefreshTrigger((prev) => prev + 1);
+  };
 
   useEffect(() => {
     //verificamos si el usuario ya tiene una sesión activa al cargar la página
@@ -37,18 +46,27 @@ export default function Home() {
     return <Auth />;
   }
   return (
-    <main className="min-h-screen p-8 bg-gray-50 dark:bg-black">
-      <div className="max-w-3xl mx-auto flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Mi Clon de Notion</h1>
-        <button 
-          onClick={() => supabase.auth.signOut()}
-          className="px-3 py-1.5 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-sm font-medium transition-colors"
-        >
-          Cerrar Sesión
-        </button>
+    <main className="flex h-screen overflow-hidden bg-gray-50 dark:bg-black">
+      <Sidebar onSelectNote={setActiveNote} activeNoteId={activeNote?.id ?? null} refreshTrigger={refreshTrigger} />
+
+      <div className="flex-1 overflow-y-auto">
+        <div className="flex justify-end p-4">
+          <button
+            onClick={() => supabase.auth.signOut()}
+            className="px-3 py-1.5 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-sm font-medium transition-colors"
+          >
+            Cerrar Sesión
+          </button>
+        </div>
+
+        <div className="px-8 pb-8">
+          <EditorDinamico
+            activeNote={activeNote}
+            onNoteSaved={() => setRefreshTrigger((prev) => prev + 1)}
+            onNoteDeleted={handleNoteDeleted}
+          />
+        </div>
       </div>
-      
-      <EditorDinamico />
     </main>
   );
 }
